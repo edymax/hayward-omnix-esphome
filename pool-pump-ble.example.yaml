@@ -1,0 +1,216 @@
+# Hayward OmniX pump, local Home Assistant control over BLE.
+# Example written for an Olimex ESP32-POE-ISO (Ethernet + PoE). Adjust the
+# esp32 board and replace the ethernet block if you use a different board.
+#
+# Copy to pool-pump-ble.yaml. Copy secrets.yaml.example to secrets.yaml and
+# fill in api_encryption_key plus your own site security key. Set pump_mac
+# to your pump's Bluetooth address. Never commit secrets.yaml.
+
+substitutions:
+  name: pool-pump-ble
+  friendly_name: Pool Pump
+  pump_mac: "AA:BB:CC:DD:EE:FF"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  comment: Hayward OmniX pump via BLE (Olimex ESP32-POE-ISO example)
+
+esp32:
+  board: esp32-poe-iso
+  framework:
+    type: esp-idf
+
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [hayward_pump]
+
+# Wired Ethernet for the Olimex ESP32-POE-ISO. For a board without Ethernet,
+# replace this block with a wifi block and your !secret wifi credentials.
+ethernet:
+  type: LAN8720
+  mdc_pin: GPIO23
+  mdio_pin: GPIO18
+  clk:
+    mode: CLK_OUT
+    pin: GPIO17
+  phy_addr: 0
+  power_pin: GPIO12
+
+logger:
+  level: DEBUG
+  logs:
+    esp32_ble_tracker: INFO
+    esp32_ble_client: INFO
+    ble_client: INFO
+    hayward_pump: DEBUG
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    encryption: {}    # reuses the api encryption key (ESPHome 2026 recommendation)
+
+esp32_ble_tracker:
+  scan_parameters:
+    active: false     # passive scan, we only talk to one known MAC
+
+ble_client:
+  - id: pump_ble
+    mac_address: ${pump_mac}
+    auto_connect: false   # one short session per command or poll, same as the OmniX app
+
+hayward_pump:
+  id: pump
+  ble_client_id: pump_ble
+  mac_address: ${pump_mac}
+  aes_key: !secret pump_aes_key
+  update_interval: 30s
+  min_speed: 18               # pump configured minimum, commands below this are refused
+  max_speed: 100
+  initial_command_seq: 28000  # pick a value above whatever the OmniX app last used
+
+  speed:
+    id: pump_speed
+    name: Speed
+    mode: slider
+
+  diagnostics: true   # also poll op 386. Turns itself off if replies are not understood.
+
+  # op 600 telemetry
+  water_temperature:
+    name: Water Temperature
+  air_temperature:
+    name: Air Temperature
+  filter_speed:
+    name: Filter Speed
+  reported_speed:
+    name: Reported Speed
+  desired_speed:
+    name: Desired Speed
+  last_speed:
+    name: Last Speed
+    entity_category: diagnostic
+  power:                   # relative power (roughly cubic in speed), not watts
+    name: Pump Power (est. units)
+  pump_status:
+    name: Pump Status
+  running:
+    name: Running
+  filter_state:
+    name: Filter State
+  filter_state_code:
+    name: Filter State Code
+  why_on:
+    name: Why On
+  why_on_code:
+    name: Why On Code
+  freeze_protect_override:
+    name: Freeze Protect Override
+  firmware_version:
+    name: Firmware Version
+    entity_category: diagnostic
+  refresh_counter:
+    name: Refresh Counter
+    entity_category: diagnostic
+  telemetry_version:
+    name: Telemetry Version
+    entity_category: diagnostic
+  config_crc_1:
+    name: Config CRC 1
+    entity_category: diagnostic
+  config_crc_2:
+    name: Config CRC 2
+    entity_category: diagnostic
+  config_crc_3:
+    name: Config CRC 3
+    entity_category: diagnostic
+  device_type:
+    name: Device Type
+    entity_category: diagnostic
+  system_state:
+    name: System State
+    entity_category: diagnostic
+  pump_transaction_id:
+    name: Pump Transaction ID
+    entity_category: diagnostic
+
+  # op 386 diagnostics (only populate if the pump answers op 386)
+  # diag_power (op 386 p[0]) omitted on purpose, it matches telemetry power above.
+  diag_current:            # p[1] best fit is drive motor current in mA, not 230 V line current
+    name: Motor Current (est.)
+    unit_of_measurement: mA
+    device_class: current
+  diag_voltage:            # p[2] DC bus voltage
+    name: DC Bus Voltage
+    unit_of_measurement: V
+    device_class: voltage
+  drive_temperature:
+    name: Drive Electronics Temperature
+  diag_speed:
+    name: Drive Speed
+  diag_filter_state_code:
+    name: Drive Filter State Code
+  error_code:
+    name: Error Code
+  pump_revision:
+    name: Pump Revision
+    entity_category: diagnostic
+  drive_revision:
+    name: Drive Revision
+    entity_category: diagnostic
+
+  # link health
+  status:
+    name: BLE Status
+  link_ok:
+    name: BLE Link OK
+  last_ack_result:
+    name: Last Command Result
+  session_failures:
+    name: BLE Session Failures
+
+button:
+  - platform: template
+    name: Preset Low (40%)
+    icon: mdi:speedometer-slow
+    on_press:
+      - number.set: {id: pump_speed, value: 40}
+  - platform: template
+    name: Preset Medium (55%)
+    icon: mdi:speedometer-medium
+    on_press:
+      - number.set: {id: pump_speed, value: 55}
+  - platform: template
+    name: Preset High (75%)
+    icon: mdi:speedometer
+    on_press:
+      - number.set: {id: pump_speed, value: 75}
+  - platform: template
+    name: Refresh Telemetry
+    icon: mdi:refresh
+    entity_category: diagnostic
+    on_press:
+      - component.update: pump
+  - platform: restart
+    name: Restart Proxy
+    entity_category: diagnostic
+
+sensor:
+  - platform: ble_rssi
+    mac_address: ${pump_mac}
+    name: Pump BLE RSSI
+    entity_category: diagnostic
+  - platform: uptime
+    name: Proxy Uptime
+    entity_category: diagnostic
+
+text_sensor:
+  - platform: ethernet_info
+    ip_address:
+      name: IP Address
+      entity_category: diagnostic
