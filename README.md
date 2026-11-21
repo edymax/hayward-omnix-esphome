@@ -34,7 +34,28 @@ Never commit `secrets.yaml`. The included `.gitignore` already excludes it.
 
 ## Quick start
 
-Copy `pool-pump-ble.example.yaml` into your ESPHome config folder as `pool-pump-ble.yaml`, and copy the `components` directory next to it so the `hayward_pump` external component can be found. Copy `secrets.yaml.example` to `secrets.yaml` in that same folder. Generate a fresh API encryption key with the command in the example file and paste it as `api_encryption_key`. Paste your site security key as `pump_aes_key`. Set the `pump_mac` substitution to the Bluetooth address of your pump. The OmniX app and many phone Bluetooth scanners will show that address.
+The usual way to get the component is ESPHome's `external_components` feature. Add this block to your ESPHome yaml so the compiler pulls `hayward_pump` from this repository. You do not need to copy the component source yourself.
+
+```yaml
+external_components:
+  - source: github://edymax/hayward-omnix-esphome
+    components: [hayward_pump]
+```
+
+You can pin a release tag so later changes on main do not change your build. The example below uses `v1.0.0` as the ref and will work once that release exists.
+
+```yaml
+external_components:
+  - source:
+      type: git
+      url: https://github.com/edymax/hayward-omnix-esphome
+      ref: v1.0.0
+    components: [hayward_pump]
+```
+
+Copy `pool-pump-ble.example.yaml` into your ESPHome config folder as `pool-pump-ble.yaml`. If you used the GitHub source above, replace the local `external_components` block in that example with the same GitHub block. Copy `secrets.yaml.example` to `secrets.yaml` in that same folder. Generate a fresh API encryption key with the command in the example file and paste it as `api_encryption_key`. Paste your site security key as `pump_aes_key`. Set the `pump_mac` substitution to the Bluetooth address of your pump. The OmniX app and many phone Bluetooth scanners will show that address.
+
+If you prefer not to pull the component from GitHub at compile time, copy the `components` directory from this repository next to your yaml instead, and leave the example's local `external_components` path as it is.
 
 Flash the board over USB the first time. The example config is written for an Olimex ESP32-POE-ISO on wired Ethernet. If you use a different board, change the `esp32` board name and replace the `ethernet` block with a `wifi` block as needed. On a non ISO Olimex ESP32-POE, do not leave USB and PoE connected at the same time. After the device joins your network, Home Assistant should discover `pool-pump-ble`. Paste the same API encryption key when Home Assistant asks for it. Later updates can go over the air.
 
